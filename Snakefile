@@ -55,12 +55,27 @@ def get_bwa_map_input_fastqs(wildcards):
 #     shell:
 #         "bwa mem -R '{params.rg}' -t {threads} {input} | samtools view -Sb - > {output}"
 
+# rule bwa_map:
+#     input:
+#         "data/genome.fa",
+#         get_bwa_map_input_fastqs
+#     output:
+#         "mapped_reads/{sample}.bam"
+#     params:
+#         rg=r"@RG\tID:{sample}\tSM:{sample}"
+#     log:
+#         "logs/bwa_mem/{sample}.log"
+#     threads: 8
+#     shell:
+#         "(bwa mem -R '{params.rg}' -t {threads} {input} | "
+#         "samtools view -Sb - > {output}) 2> {log}"
+
 rule bwa_map:
     input:
         "data/genome.fa",
         get_bwa_map_input_fastqs
     output:
-        "mapped_reads/{sample}.bam"
+        temp("mapped_reads/{sample}.bam") # temporary files
     params:
         rg=r"@RG\tID:{sample}\tSM:{sample}"
     log:
@@ -73,12 +88,22 @@ rule bwa_map:
 # snakemake -np mapped_reads/B.bam
 # snakemake -np mapped_reads/A.bam mapped_reads/B.bam
 # snakemake -np mapped_reads/{A,B}.bam
+# snakemake --cores 1 mapped_reads/A.bam # target files are not deleted
+
+# rule samtools_sort:
+#     input:
+#         "mapped_reads/{sample}.bam"
+#     output:
+#         "sorted_reads/{sample}.bam"
+#     shell:
+#         "samtools sort -T sorted_reads/{wildcards.sample} "
+#         "-O bam {input} > {output}"
 
 rule samtools_sort:
     input:
         "mapped_reads/{sample}.bam"
     output:
-        "sorted_reads/{sample}.bam"
+        protected("sorted_reads/{sample}.bam") # protected files
     shell:
         "samtools sort -T sorted_reads/{wildcards.sample} "
         "-O bam {input} > {output}"
@@ -116,7 +141,7 @@ rule bcftools_call:
     params:
         mutation_rate=config["prior_mutation_rate"] 
     log:
-        "logs/bcftools_call.log" # Log files must contain exactly the same wildcards as the output files to avoid file name clashes between different jobs of the same rule.
+        "logs/bcftools_call/all.log" # Log files must contain exactly the same wildcards as the output files to avoid file name clashes between different jobs of the same rule.
     shell:
         "bcftools mpileup -f {input.fa} {input.bam} | "
         "bcftools call -P {params.mutation_rate} -mv - > {output} 2> {log}"
@@ -138,3 +163,4 @@ rule plot_quals:
 # snakemake --forcerun samtools_sort --cores 1
 # snakemake --forcerun samtools_index --cores 1 -np
 # snakemake --cores 1 --summary # don't use --summary because there's a bug
+# snakemake --cores 1 --forceall
